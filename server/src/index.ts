@@ -18,29 +18,39 @@ const RSA_PUBLIC_KEY = fs.readFileSync('./public.pem');
 // Aggregate Configuration Variables
 const PARTNER_PLATFORM = 'ABC Corp. Ltd';
 const PORT = process.env.PORT ? process.env.PORT : 3001;
-const YUBI_PARTNER_ID = process.env.YUBI_PARTNER_ID
-  ? process.env.YUBI_PARTNER_ID
-  : 'JANK_10101';
-const YUBI_HOST = process.env.YUBI_HOST
-  ? process.env.YUBI_HOST
-  : 'http://localhost:3000';
-const YUBI_API = process.env.YUBI_API
-  ? process.env.YUBI_API
-  : 'http://localhost:3030';
+const BANKUE_GAME_ID = process.env.BANKUE_GAME_ID ?? '2';
+const YUBI_HOST = process.env.YUBI_HOST ?? 'http://localhost:3000';
+const BANKUE_API = process.env.BANKUE_API ?? 'http://localhost:3030';
 const YUBI_PATH = '/payments/partner';
 const YUBI_PAYMENTS_URL = `${YUBI_HOST}${YUBI_PATH}`;
+const TRON_TOKEN_ADDRESS = process.env.TRON_TOKEN_ADDRESS ?? '0xd9479486081278a1a626262082ea2042648687cb'
+const BNB_TOKEN_ADDRESS = process.env.BNB_TOKEN_ADDRESS ?? '0xffBfE5fcbecED10b385601Cc78fECfc33BeE237b'
+
+const BNB_CHAIN_INFO = {
+  chainType: 'binance',
+  chainId: 97
+}
+
+const TRON_CHAIN_INFO = {
+  chainType: 'tron',
+  chainId: 1
+}
+
+const ETH_CHAIN_INFO = {
+  chainType: 'eth',
+  chainId: 1337
+}
 
 console.log(`
 ===CONFIG===
 Port: ${PORT}
 Partner: ${PARTNER_PLATFORM}
-Yubi PartnerID: ${YUBI_PARTNER_ID}
-Yubi Api: ${YUBI_API}
-Yubi Payments URL: ${YUBI_PAYMENTS_URL}
+Bankue GameID: ${BANKUE_GAME_ID}
+Bankue Api: ${BANKUE_API}
 ===========\n`);
 
 const httpClient = axios.create({
-  baseURL: YUBI_API,
+  baseURL: BANKUE_API,
 });
 
 async function main() {
@@ -54,7 +64,7 @@ async function main() {
   await recover(db);
 
   // start the event chaser
-  stateUpdateLoop(db);
+  // stateUpdateLoop(db);
 
   //middleware
   app.use(bodyParser.json());
@@ -67,6 +77,31 @@ async function main() {
     res.json(user);
   });
 
+  // Get deposit record
+  app.post('/webhook', (req, res) => {
+    const userId = req.body.user_id;
+    const usersCollection = db.get('users');
+    const txCollection = db.get('tetherTransactions').value();
+    const user = usersCollection.getById(userId).value();
+    if (!user) {
+      res.status(400).send('unknown user');
+      return;
+    }
+    if (!req.body.token_address) {
+      return;
+    }
+    // process event and store the fact
+    user.balance = String(Number(req.body.value) + Number(user.balance));
+    txCollection.push({
+      userId: user.id,
+      kind: 'Deposit',
+      amount: req.body.value,
+      at: req.body.date_time,
+    });
+    db.write();
+    res.status(200).send("12344");
+  });
+
   // Query users
   app.get('/allUsers', (_req, res) => {
     const users = db
@@ -76,57 +111,57 @@ async function main() {
     res.json(users);
   });
 
-  // Withdraw funds to YUBI as User
-  app.post('/withdrawOnYubi', async (req, res) => {
-    const { userId, currency, value } = req.body;
-    const userCollection = db.get('users');
-    let user = userCollection.getById(userId).value();
-    if (!user) {
-      res.status(400).send('unknown user');
-      return;
-    }
-    if (user.balance < value) {
-      res.status(400).send('insufficient funds');
-      return;
-    }
-    if (!user.yubiAccount) {
-      res.status(400).send('no withdrawal account available');
-      return;
-    }
-    if (currency !== 'Tether') {
-      res.status(400).send('unsupported currency');
-      return;
-    }
+  // // Withdraw funds to YUBI as User
+  // app.post('/withdrawOnYubi', async (req, res) => {
+  //   const { userId, currency, value } = req.body;
+  //   const userCollection = db.get('users');
+  //   let user = userCollection.getById(userId).value();
+  //   if (!user) {
+  //     res.status(400).send('unknown user');
+  //     return;
+  //   }
+  //   if (user.balance < value) {
+  //     res.status(400).send('insufficient funds');
+  //     return;
+  //   }
+  //   if (!user.yubiAccount) {
+  //     res.status(400).send('no withdrawal account available');
+  //     return;
+  //   }
+  //   if (currency !== 'Tether') {
+  //     res.status(400).send('unsupported currency');
+  //     return;
+  //   }
 
-    const idempotencyKey = uuidv4();
-    const payload: OnYubi = {
-      idempotencyKey,
-      user: user.yubiAccount,
-      amount: {
-        kind: currency,
-        value: String(value),
-      },
-      metadata: jankenMetadata(userId),
-    };
-    const request = {
-      id: idempotencyKey,
-      userId,
-      yubiRequestId: undefined,
-      url: `${YUBI_API}/partners/userWithdrawal`,
-      payload,
-    };
+  //   const idempotencyKey = uuidv4();
+  //   const payload: OnYubi = {
+  //     idempotencyKey,
+  //     user: user.yubiAccount,
+  //     amount: {
+  //       kind: currency,
+  //       value: String(value),
+  //     },
+  //     metadata: jankenMetadata(userId),
+  //   };
+  //   const request = {
+  //     id: idempotencyKey,
+  //     userId,
+  //     yubiRequestId: undefined,
+  //     url: `${BANKUE_API}/partners/userWithdrawal`,
+  //     payload,
+  //   };
 
-    let accepted = await idempotentWithdrawal(db, request);
-    if (accepted) {
-      res.sendStatus(202);
-    } else {
-      res.sendStatus(500);
-    }
-  });
+  //   let accepted = await idempotentWithdrawal(db, request);
+  //   if (accepted) {
+  //     res.sendStatus(202);
+  //   } else {
+  //     res.sendStatus(500);
+  //   }
+  // });
 
   // Withdraw funds to Chain as User
   app.post('/withdrawOnChain', async (req, res) => {
-    const { userId, currency, value, address, network } = req.body;
+    const { userId, value, address, network } = req.body;
     const userCollection = db.get('users');
     let user = userCollection.getById(userId).value();
     if (!user) {
@@ -137,27 +172,35 @@ async function main() {
       res.status(400).send('insufficient funds');
       return;
     }
-    if (currency !== 'Tether') {
-      res.status(400).send('unsupported currency');
-      return;
+    let tokenAddress : String
+    let chainInfo: {
+      chainType: String;
+      chainId: Number;
     }
+    switch (network) {
+      case 'TRC20' :
+        tokenAddress = TRON_TOKEN_ADDRESS
+        chainInfo = TRON_CHAIN_INFO
+        break;
+      case 'ERC20' : 
+        tokenAddress = BNB_TOKEN_ADDRESS
+        chainInfo = BNB_CHAIN_INFO
+        break;
+     }
 
     const idempotencyKey = uuidv4();
     const payload: OnChain = {
-      orderId: idempotencyKey,
-      network: network,
+      idempotentKey: idempotencyKey,
       address,
-      amount: {
-        kind: currency,
-        value: String(value),
-      },
-      metadata: jankenMetadata(userId),
+      tokenAddress,
+      value,
+      chainInfo
     };
     const request = {
       id: idempotencyKey,
       userId,
       yubiRequestId: undefined,
-      url: `${YUBI_API}/partners/userDirectWithdrawal`,
+      url: `${BANKUE_API}/secure/api/withdrawal`,
       payload,
     };
 
@@ -228,16 +271,16 @@ async function main() {
   });
 
   // Get the YUBI Deposit link
-  app.post('/depositLink', (req, res) => {
-    const { userId, applyAmount, network } = req.body;
-    const user = db.get('users').getById(userId).value();
-    if (!user) {
-      res.status(400).send('unknown user');
-      return;
-    }
+  // app.post('/depositLink', (req, res) => {
+  //   const { userId, applyAmount, network } = req.body;
+  //   const user = db.get('users').getById(userId).value();
+  //   if (!user) {
+  //     res.status(400).send('unknown user');
+  //     return;
+  //   }
 
-    res.json(createYubiPaymentLink(userId, 'Tether', applyAmount, network));
-  });
+  //   res.json(createYubiPaymentLink(userId, 'Tether', applyAmount, network));
+  // });
 
   // Get list of User's Transactions
   app.post('/transactions', (req, res) => {
@@ -295,26 +338,28 @@ type WithdrawRequest = {
 };
 
 type OnYubi = {
-  idempotencyKey: string;
-  user: string;
-  amount: {
-    kind: string;
-    value: string;
-  };
-  metadata: any;
+  idempotentKey: string,
+  address: string;
+  value: String;
+  chainInfo: {
+    chainType: String;
+    chainId: Number;
+  }
+  tokenAddress: String | undefined;
 };
 
 type OnChain = {
-  orderId: string,
-  network: string,
+  idempotentKey: string,
   address: string;
-  amount: {
-    kind: string;
-    value: string;
-  };
-  metadata: any;
+  value: String;
+  chainInfo: {
+    chainType: String;
+    chainId: Number;
+  }
+  tokenAddress: String | undefined;
 };
 
+// change here
 // Yubi API guarantees a request remains idempotent for 24 hours if the same idempotency key
 // is given for a request
 async function idempotentWithdrawal(db, request: WithdrawRequest) {
@@ -323,7 +368,7 @@ async function idempotentWithdrawal(db, request: WithdrawRequest) {
 
   // #IMPORTANT, User.balance and idempotent requests object must be a transactional write in YOUR
   // database.  `user.balance -= value`` and the request is stored on disk after the `write()` call
-  const value = Number(request.payload.amount.value);
+  const value = Number(request.payload.value);
   console.log('user balance pre withdraw:', user.balance);
   user.balance -= value;
   console.log('user balance post withdraw:', user.balance);
@@ -331,30 +376,28 @@ async function idempotentWithdrawal(db, request: WithdrawRequest) {
 
   //Post Request, retrying if we can
   let headers = createSignedHeaders(
-    YUBI_PARTNER_ID,
+    BANKUE_GAME_ID,
     RSA_PRIVATE_KEY,
     request.payload
   );
-  const [yubiRequestId, revert] = await retryRequest(
+  const revert = await retryRequest(
     request.url,
     headers,
     request.payload
   );
-  if (yubiRequestId) {
+  if (!revert) {
     //store the withdrawal response id from YUBI
     //when the corresponding event comes back from YUBI, we can mark the entry based on the
     //yubi request id as complete.  This lets us know for sure if a response was 202 accepted
-    console.log('Withdrawal accepted with id: ', yubiRequestId);
-    cachedRequest.yubiRequestId = yubiRequestId;
-    requestCache.write();
+    console.log('Withdrawal accepted');
+    // cachedRequest.yubiRequestId = yubiRequestId;
+    // requestCache.write();
   } else {
-    if (revert) {
       // #IMPORTANT the balance update and requestCache item must be removed together in
       // a transaction!
-      user.balance += value;
+      user.balance = value + Number(user.balance);
       requestCache.removeById(request.id).write();
-    }
-    return false;
+      return false;
   }
   return true;
 }
@@ -363,7 +406,7 @@ async function retryRequest(
   url: string,
   headers: object,
   payload: any
-): Promise<[string | undefined, boolean]> {
+): Promise<boolean> {
   let retries = 5;
   while (retries > 0) {
     console.log(
@@ -372,13 +415,13 @@ async function retryRequest(
     try {
       let resp = await httpClient.post(url, payload, { headers });
       if (resp.status === 202) {
-        return [resp.data.systemId, false];
+        return  false;
       }
     } catch (e) {
       if (e.response) {
         // request failed due to bad request or server error.  Abort
         console.log('Idempotent Bad Request, Need Revert');
-        return [undefined, true];
+        return  true;
       } else if (e.request) {
         // request failed due to timeout.  Could be our network or remote's network or both.
         // it is possible the request arrived or did not arrive, this is retryable
@@ -387,7 +430,7 @@ async function retryRequest(
       } else {
         // this is code level errors like null objects.  In this case, it should be a failure
         console.log('Idempotent Request System Error:', e);
-        return [undefined, true];
+        return  true;
       }
     }
 
@@ -399,7 +442,7 @@ async function retryRequest(
   console.log(
     'Retry count exhausted, request status unknown and cannot revert'
   );
-  return [undefined, false];
+  return false;
 }
 
 export function delay(ms: number) {
@@ -415,23 +458,23 @@ function jankenMetadata(userId: string) {
   };
 }
 
-function createYubiPaymentLink(userId: string, currency: string, applyAmount: string, network: string): string {
-  const metadataURIParams = new URLSearchParams(jankenMetadata(userId));
-  const orderId = uuidv4();
+// function createYubiPaymentLink(userId: string, currency: string, applyAmount: string, network: string): string {
+//   const metadataURIParams = new URLSearchParams(jankenMetadata(userId));
+//   const orderId = uuidv4();
 
-  let path = network ? 
-    `${YUBI_PATH}?currency=${currency}&partner=${YUBI_PARTNER_ID}&network=${network}&order=${orderId}&${metadataURIParams.toString()}` 
-      : `${YUBI_PATH}?currency=${currency}&partner=${YUBI_PARTNER_ID}&order=${orderId}&${metadataURIParams.toString()}`;
-  if (applyAmount !== "") {
-    path += `&applyamount=${applyAmount}`
-  }
+//   let path = network ? 
+//     `${YUBI_PATH}?currency=${currency}&partner=${YUBI_PARTNER_ID}&network=${network}&order=${orderId}&${metadataURIParams.toString()}` 
+//       : `${YUBI_PATH}?currency=${currency}&partner=${YUBI_PARTNER_ID}&order=${orderId}&${metadataURIParams.toString()}`;
+//   if (applyAmount !== "") {
+//     path += `&applyamount=${applyAmount}`
+//   }
 
-  const signer = crypto.createSign('RSA-SHA256');
-  signer.update(path);
-  const signature = signer.sign(RSA_PRIVATE_KEY, 'base64');
+//   const signer = crypto.createSign('RSA-SHA256');
+//   signer.update(path);
+//   const signature = signer.sign(RSA_PRIVATE_KEY, 'base64');
 
-  return `${YUBI_HOST}${path}&sig=${signature}`;
-}
+//   return `${YUBI_HOST}${path}&sig=${signature}`;
+// }
 
 async function createDatabase() {
   try {
@@ -496,68 +539,68 @@ async function createDatabase() {
   return db;
 }
 
-function stateUpdateLoop(db) {
-  const checkpoint = db.get('yubiCheckpoint').value();
-  const usersCollection = db.get('users');
-  const txCollection = db.get('tetherTransactions').value();
-  const requestCache = db.get('requestCache');
+// function stateUpdateLoop(db) {
+//   const checkpoint = db.get('yubiCheckpoint').value();
+//   const usersCollection = db.get('users');
+//   const txCollection = db.get('tetherTransactions').value();
+//   const requestCache = db.get('requestCache');
 
-  let loopId = setInterval(async () => {
-    let data = await query_events(checkpoint.eventIndex);
-    if (!data) {
-      return;
-    }
+//   let loopId = setInterval(async () => {
+//     let data = await query_events(checkpoint.eventIndex);
+//     if (!data) {
+//       return;
+//     }
 
-    try {
-      // console.log(`received ${resp.data.length} events`);
-      for (var i = 0; i < data.length; i++) {
-        const event = data[i];
-        console.log(`processing ${event.kind} event`);
-        switch (event.kind) {
-          case 'Received':
-            if (event.metadata !== undefined && event.metadata.userId !== undefined) {
-              const user = usersCollection.getById(event.metadata.userId).value();
-              // process each event and store the fact
-              user.balance += Number(event.amount.value);
-              user.yubiAccount = event.correlationId;
-              txCollection.push({
-                userId: user.id,
-                kind: 'Deposit',
-                amount: event.amount,
-                at: event.when,
-              });
-            }
-            break;
-          // case 'Transfered':
-          case 'Withdrawn':
-            if (event.metadata !== undefined && event.metadata.userId !== undefined) {
-              const user = usersCollection.getById(event.metadata.userId).value();
-              // It is up to the system to decide if the requestCache for this transfer event
-              // should be deleted
-              txCollection.push({
-                userId: user.id,
-                kind: 'Withdraw',
-                amount: event.amount,
-                at: event.when,
-              });
-            }
-            break;
-        }
-        //#NOTE this bigint conversion is needed only because javascript only uses 53bit precision
-        //for numbers and the api uses i64 for event indices
-        let index = BigInt(checkpoint.eventIndex);
-        index += BigInt(1);
-        checkpoint.eventIndex = index.toString();
-        // the last write makes everything transactional
-        db.write();
-      }
-    } catch (e) {
-      console.log(`server logic error: ${e}`);
-      clearInterval(loopId);
-      throw e;
-    }
-  }, 5000);
-}
+//     try {
+//       // console.log(`received ${resp.data.length} events`);
+//       for (var i = 0; i < data.length; i++) {
+//         const event = data[i];
+//         console.log(`processing ${event.kind} event`);
+//         switch (event.kind) {
+//           case 'Received':
+//             if (event.metadata !== undefined && event.metadata.userId !== undefined) {
+//               const user = usersCollection.getById(event.metadata.userId).value();
+//               // process each event and store the fact
+//               user.balance += Number(event.amount.value);
+//               user.yubiAccount = event.correlationId;
+//               txCollection.push({
+//                 userId: user.id,
+//                 kind: 'Deposit',
+//                 amount: event.amount,
+//                 at: event.when,
+//               });
+//             }
+//             break;
+//           // case 'Transfered':
+//           case 'Withdrawn':
+//             if (event.metadata !== undefined && event.metadata.userId !== undefined) {
+//               const user = usersCollection.getById(event.metadata.userId).value();
+//               // It is up to the system to decide if the requestCache for this transfer event
+//               // should be deleted
+//               txCollection.push({
+//                 userId: user.id,
+//                 kind: 'Withdraw',
+//                 amount: event.amount,
+//                 at: event.when,
+//               });
+//             }
+//             break;
+//         }
+//         //#NOTE this bigint conversion is needed only because javascript only uses 53bit precision
+//         //for numbers and the api uses i64 for event indices
+//         let index = BigInt(checkpoint.eventIndex);
+//         index += BigInt(1);
+//         checkpoint.eventIndex = index.toString();
+//         // the last write makes everything transactional
+//         db.write();
+//       }
+//     } catch (e) {
+//       console.log(`server logic error: ${e}`);
+//       clearInterval(loopId);
+//       throw e;
+//     }
+//   }, 5000);
+// }
 
 type EventsRequest = {
   currencyKind: string;
@@ -565,7 +608,7 @@ type EventsRequest = {
 };
 
 type SignedHeaders = {
-  'X-Subject': string;
+  'X-GameId': string;
   'X-Signature': string;
   'X-Algorithm': 'RSA-SHA256';
 };
@@ -580,39 +623,39 @@ function createSignedHeaders(
     .update(JSON.stringify(payload))
     .sign(privateKey, 'base64');
   const headers: SignedHeaders = {
-    'X-Subject': id,
+    'X-GameId': id,
     'X-Signature': signature,
     'X-Algorithm': 'RSA-SHA256',
   };
   return headers;
 }
 
-async function query_events(eventIndex: string): Promise<any> {
-  try {
-    console.log('requesting events from:', eventIndex);
-    const request: EventsRequest = {
-      currencyKind: 'Tether',
-      version: eventIndex,
-    };
-    const headers = createSignedHeaders(
-      YUBI_PARTNER_ID,
-      RSA_PRIVATE_KEY,
-      request
-    );
+// async function query_events(eventIndex: string): Promise<any> {
+//   try {
+//     console.log('requesting events from:', eventIndex);
+//     const request: EventsRequest = {
+//       currencyKind: 'Tether',
+//       version: eventIndex,
+//     };
+//     const headers = createSignedHeaders(
+//       YUBI_PARTNER_ID,
+//       RSA_PRIVATE_KEY,
+//       request
+//     );
 
-    const resp = await httpClient.post(`${YUBI_API}/partners/events`, request, {
-      headers,
-    });
-    if (resp.status !== 200) {
-      console.log(`events query failed with status: ${resp.status}`);
-      return;
-    }
-    return resp.data;
-  } catch (e) {
-    console.log(`update failed: ${e}`);
-    return;
-  }
-}
+//     const resp = await httpClient.post(`${YUBI_API}/partners/events`, request, {
+//       headers,
+//     });
+//     if (resp.status !== 200) {
+//       console.log(`events query failed with status: ${resp.status}`);
+//       return;
+//     }
+//     return resp.data;
+//   } catch (e) {
+//     console.log(`update failed: ${e}`);
+//     return;
+//   }
+// }
 
 // const request_uri = `/partners/events?partnerId=${YUBI_PARTNER_ID}&currencyKind=Tether&version=1234`;
 // console.log(`request uri: ${request_uri}`)

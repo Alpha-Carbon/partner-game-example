@@ -84,7 +84,6 @@ export async function janken(
 export async function withdrawOnChain(
     userId: string,
     address: string,
-    currency: string,
     value: number,
     network: string
 ) {
@@ -94,7 +93,7 @@ export async function withdrawOnChain(
             Accept: 'application/json',
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId, currency, value, address, network }),
+        body: JSON.stringify({ userId, value, address, network }),
     })
 
     if (!resp.ok) {

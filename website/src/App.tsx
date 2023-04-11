@@ -78,7 +78,7 @@ function UserMenu(props: { user: UserState }) {
             setState('sending')
             try {
                 await API.delay(1000)
-                await API.withdrawOnChain(user.id, address, 'Tether', +withdrawAmount, network)
+                await API.withdrawOnChain(user.id, address, +withdrawAmount, network)
                 alert(`Withdrawal Chain Request of ${withdrawAmount} USDT accepted`)
                 setState('idle')
             } catch (e) {
@@ -120,18 +120,18 @@ function UserMenu(props: { user: UserState }) {
 
     const getDepositLink = (network: string) => {
         windowRef = window.open()
-        ; (async () => {
-            const yubiLink = await API.getDepositLink(user.id, applyAmount, network)
-            windowRef.location = yubiLink
-            windowRef.name = '_blank'
-        })()
+            ; (async () => {
+                const yubiLink = await API.getDepositLink(user.id, applyAmount, network)
+                windowRef.location = yubiLink
+                windowRef.name = '_blank'
+            })()
     }
 
     return (
         <div>
             [{user.username}] Credits: {user.balance} USDT{' '}
             <br />
-            <span>apply amount: </span>
+            {/* <span>apply amount: </span>
             <input value={applyAmount} onChange={handleApplyAmountChange}></input>
             <button onClick={() => getDepositLink('')}>
                 Deposit
@@ -141,7 +141,7 @@ function UserMenu(props: { user: UserState }) {
             </button>
             <button onClick={() => getDepositLink('ERC20')}>
                 Deposit ERC20
-            </button>
+            </button> */}
             {/* <button disabled={pendingRequest} onClick={sendYubiWithdrawal}>
                 Withdraw Yubi(50)
             </button> */}
