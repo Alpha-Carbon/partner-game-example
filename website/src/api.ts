@@ -101,6 +101,26 @@ export async function withdrawOnChain(
     }
 }
 
+export async function getDepositAddress(
+    userId: string,
+    network: string
+) {
+    const resp = await fetch(`${GAME_API}/getDepositAddress`, {
+        method: 'POST',
+        headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId, network }),
+    })
+
+    if (!resp.ok) {
+        throw Error(`${await resp.text()}`)
+    }
+
+    return await resp.json()
+}
+
 export async function withdrawOnYubi(
     userId: string,
     currency: string,

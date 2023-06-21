@@ -18,13 +18,17 @@ const RSA_PUBLIC_KEY = fs.readFileSync('./public.pem');
 // Aggregate Configuration Variables
 const PARTNER_PLATFORM = 'ABC Corp. Ltd';
 const PORT = process.env.PORT ? process.env.PORT : 3001;
-const BANKUE_GAME_ID = process.env.BANKUE_GAME_ID ?? '2';
+const BANQ_MERCHANT_ID = process.env.BANQ_MERCHANT_ID ?? '00000000-0000-0000-0000-000000000000';
+const BANQ_SERVICE_ID = process.env.BANQ_SERVICE_ID ?? '10000000-0000-0000-0000-000000000000';
 const YUBI_HOST = process.env.YUBI_HOST ?? 'http://localhost:3000';
-const BANKUE_API = process.env.BANKUE_API ?? 'http://localhost:3030';
+// const BANQ_API = process.env.BANQ_API ?? 'http://localhost:3030';
+const BANQ_API = process.env.BANQ_API ?? 'http://192.168.50.147:3030';
 const YUBI_PATH = '/payments/partner';
 const YUBI_PAYMENTS_URL = `${YUBI_HOST}${YUBI_PATH}`;
 const TRON_TOKEN_ADDRESS = process.env.TRON_TOKEN_ADDRESS ?? '0xd9479486081278a1a626262082ea2042648687cb'
 const BNB_TOKEN_ADDRESS = process.env.BNB_TOKEN_ADDRESS ?? '0xffBfE5fcbecED10b385601Cc78fECfc33BeE237b'
+const TRON_TOKEN_TYPE = process.env.TRON_TOKEN_TYPE ?? 'USDT'
+const BNB_TOKEN_TYPE = process.env.BNB_TOKEN_TYPE ?? 'USDT'
 
 const BNB_CHAIN_INFO = {
   chainType: 'binance',
@@ -45,12 +49,13 @@ console.log(`
 ===CONFIG===
 Port: ${PORT}
 Partner: ${PARTNER_PLATFORM}
-Bankue GameID: ${BANKUE_GAME_ID}
-Bankue Api: ${BANKUE_API}
+BANQ MerchantID: ${BANQ_MERCHANT_ID}
+BANQ ServiceID: ${BANQ_SERVICE_ID}
+BANQ Api: ${BANQ_API}
 ===========\n`);
 
 const httpClient = axios.create({
-  baseURL: BANKUE_API,
+  baseURL: BANQ_API,
 });
 
 async function main() {
@@ -91,12 +96,12 @@ async function main() {
       return;
     }
     // process event and store the fact
-    user.balance = String(Number(req.body.value) + Number(user.balance));
+    user.balance = Number(req.body.value) + Number(user.balance);
     txCollection.push({
       userId: user.id,
       kind: 'Deposit',
-      amount: req.body.value,
-      at: req.body.date_time,
+      amount: Number(req.body.value),
+      at: req.body.dateTime,
     });
     db.write();
     res.status(200).send("12344");
@@ -147,7 +152,7 @@ async function main() {
   //     id: idempotencyKey,
   //     userId,
   //     yubiRequestId: undefined,
-  //     url: `${BANKUE_API}/partners/userWithdrawal`,
+  //     url: `${BANQ_API}/partners/userWithdrawal`,
   //     payload,
   //   };
 
@@ -158,6 +163,60 @@ async function main() {
   //     res.sendStatus(500);
   //   }
   // });
+
+  // get user deposit address from Banq
+  app.post('/getDepositAddress', async (req, res) => {
+    const { userId, network } = req.body;
+    const userCollection = db.get('users');
+    let user = userCollection.getById(userId).value();
+    if (!user) {
+      res.status(400).send('unknown user');
+      return;
+    }
+
+
+    let tokenAddress: String
+    let chainInfo: {
+      chainType: string;
+      chainId: Number;
+    }
+    switch (network) {
+      case 'TRC20':
+        tokenAddress = TRON_TOKEN_ADDRESS
+        chainInfo = TRON_CHAIN_INFO
+        break;
+      case 'ERC20':
+        tokenAddress = BNB_TOKEN_ADDRESS
+        chainInfo = BNB_CHAIN_INFO
+        break;
+    }
+
+
+    const payload: Deposit = {
+      userId: user.id,
+      chainInfo,
+      metadata: {
+        serviceMedata: "test"
+      }
+    };
+
+    const request: DepositRequest = {
+      url: `${BANQ_API}/secure/api/depositAddress`,
+      payload,
+    };
+
+    let headers = createSignedHeaders(
+      BANQ_MERCHANT_ID,
+      BANQ_SERVICE_ID,
+      RSA_PRIVATE_KEY,
+      request.payload
+    );
+
+    let banqRes = await httpClient.post(request.url, request.payload, { headers });
+
+    res.status(200).json(banqRes.data)
+  });
+
 
   // Withdraw funds to Chain as User
   app.post('/withdrawOnChain', async (req, res) => {
@@ -172,27 +231,28 @@ async function main() {
       res.status(400).send('insufficient funds');
       return;
     }
-    let tokenAddress : String
+    let tokenType: string
     let chainInfo: {
-      chainType: String;
+      chainType: string;
       chainId: Number;
     }
     switch (network) {
-      case 'TRC20' :
-        tokenAddress = TRON_TOKEN_ADDRESS
+      case 'TRC20':
+        tokenType = TRON_TOKEN_TYPE
         chainInfo = TRON_CHAIN_INFO
         break;
-      case 'ERC20' : 
-        tokenAddress = BNB_TOKEN_ADDRESS
+      case 'ERC20':
+        tokenType = BNB_TOKEN_TYPE
         chainInfo = BNB_CHAIN_INFO
         break;
-     }
+    }
 
     const idempotencyKey = uuidv4();
     const payload: OnChain = {
       idempotentKey: idempotencyKey,
+      merchantId: BANQ_MERCHANT_ID,
       address,
-      tokenAddress,
+      tokenType,
       value,
       chainInfo
     };
@@ -200,7 +260,7 @@ async function main() {
       id: idempotencyKey,
       userId,
       yubiRequestId: undefined,
-      url: `${BANKUE_API}/secure/api/withdrawal`,
+      url: `${BANQ_API}/secure/api/withdrawal`,
       payload,
     };
 
@@ -329,6 +389,7 @@ async function recover(db) {
   }
 }
 
+
 type WithdrawRequest = {
   id: string;
   userId: string;
@@ -337,26 +398,45 @@ type WithdrawRequest = {
   payload: OnYubi | OnChain;
 };
 
+type DepositRequest = {
+  url: string;
+  payload: Deposit;
+};
+
 type OnYubi = {
   idempotentKey: string,
   address: string;
-  value: String;
+  value: string;
   chainInfo: {
-    chainType: String;
+    chainType: string;
     chainId: Number;
   }
-  tokenAddress: String | undefined;
+  tokenAddress: string | undefined;
 };
 
 type OnChain = {
   idempotentKey: string,
-  address: string;
-  value: String;
+  merchantId: string,
+  tokenType: string,
+  address: string,
+  value: Number,
   chainInfo: {
-    chainType: String;
+    chainType: string;
     chainId: Number;
   }
-  tokenAddress: String | undefined;
+};
+
+
+type Metadata = {
+  serviceMedata: string
+}
+type Deposit = {
+  chainInfo: {
+    chainType: string;
+    chainId: Number;
+  },
+  userId: string,
+  metadata: Metadata
 };
 
 // change here
@@ -376,7 +456,8 @@ async function idempotentWithdrawal(db, request: WithdrawRequest) {
 
   //Post Request, retrying if we can
   let headers = createSignedHeaders(
-    BANKUE_GAME_ID,
+    BANQ_MERCHANT_ID,
+    BANQ_SERVICE_ID,
     RSA_PRIVATE_KEY,
     request.payload
   );
@@ -393,11 +474,11 @@ async function idempotentWithdrawal(db, request: WithdrawRequest) {
     // cachedRequest.yubiRequestId = yubiRequestId;
     // requestCache.write();
   } else {
-      // #IMPORTANT the balance update and requestCache item must be removed together in
-      // a transaction!
-      user.balance = value + Number(user.balance);
-      requestCache.removeById(request.id).write();
-      return false;
+    // #IMPORTANT the balance update and requestCache item must be removed together in
+    // a transaction!
+    user.balance = value + Number(user.balance);
+    requestCache.removeById(request.id).write();
+    return false;
   }
   return true;
 }
@@ -415,13 +496,13 @@ async function retryRequest(
     try {
       let resp = await httpClient.post(url, payload, { headers });
       if (resp.status === 202) {
-        return  false;
+        return false;
       }
     } catch (e) {
       if (e.response) {
         // request failed due to bad request or server error.  Abort
         console.log('Idempotent Bad Request, Need Revert');
-        return  true;
+        return true;
       } else if (e.request) {
         // request failed due to timeout.  Could be our network or remote's network or both.
         // it is possible the request arrived or did not arrive, this is retryable
@@ -430,7 +511,7 @@ async function retryRequest(
       } else {
         // this is code level errors like null objects.  In this case, it should be a failure
         console.log('Idempotent Request System Error:', e);
-        return  true;
+        return true;
       }
     }
 
@@ -608,22 +689,26 @@ type EventsRequest = {
 };
 
 type SignedHeaders = {
-  'X-GameId': string;
+  'X-merchantId': string;
+  'X-ServiceId': string;
   'X-Signature': string;
   'X-Algorithm': 'RSA-SHA256';
 };
 
 function createSignedHeaders(
-  id: string,
+  merchantId: string,
+  serviceId: string,
   privateKey: any,
   payload: object
 ): object {
+
   const signer = crypto.createSign('RSA-SHA256');
   const signature = signer
     .update(JSON.stringify(payload))
     .sign(privateKey, 'base64');
   const headers: SignedHeaders = {
-    'X-GameId': id,
+    'X-merchantId': merchantId,
+    'X-ServiceId': serviceId,
     'X-Signature': signature,
     'X-Algorithm': 'RSA-SHA256',
   };

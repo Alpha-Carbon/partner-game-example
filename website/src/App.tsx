@@ -54,6 +54,7 @@ function UserMenu(props: { user: UserState }) {
     const [address, setAddress] = useState<string>('')
     const [applyAmount, setApplyAmount] = useState<string>('')
     const [withdrawAmount, setWithdrawAmount] = useState<string>('50')
+    const [depositAddress, setDepositAddress] = useState<string>('')
 
     const sendYubiWithdrawal = useCallback(async () => {
         if (state === 'idle') {
@@ -118,13 +119,15 @@ function UserMenu(props: { user: UserState }) {
 
     const pendingRequest = state !== 'idle'
 
-    const getDepositLink = (network: string) => {
-        windowRef = window.open()
-            ; (async () => {
-                const yubiLink = await API.getDepositLink(user.id, applyAmount, network)
-                windowRef.location = yubiLink
-                windowRef.name = '_blank'
-            })()
+    const getDepositLink = async (network: string) => {
+        let res = await API.getDepositAddress(user.id, network);
+        setDepositAddress(res.depositAddress)
+        // windowRef = window.open()
+        //     ; (async () => {
+        //         const yubiLink = await API.getDepositLink(user.id, applyAmount, network)
+        //         windowRef.location = yubiLink
+        //         windowRef.name = '_blank'
+        //     })()
     }
 
     return (
@@ -132,16 +135,21 @@ function UserMenu(props: { user: UserState }) {
             [{user.username}] Credits: {user.balance} USDT{' '}
             <br />
             {/* <span>apply amount: </span>
-            <input value={applyAmount} onChange={handleApplyAmountChange}></input>
-            <button onClick={() => getDepositLink('')}>
+            <input value={applyAmount} onChange={handleApplyAmountChange}></input> */}
+            {/* <button onClick={() => getDepositLink('')}>
                 Deposit
-            </button>
-            <button onClick={() => getDepositLink('TRC20')}>
-                Deposit TRC20
-            </button>
-            <button onClick={() => getDepositLink('ERC20')}>
-                Deposit ERC20
             </button> */}
+            {/* <button onClick={() => getDepositLink('TRC20')}>
+                Deposit TRC20
+            </button> */}
+            <button onClick={() => getDepositLink('ERC20')}>
+                Get ERC20 Deposit Address
+            </button>
+            {/* <button onClick={() => getDepositLink('TRC20')}>
+                Get TRC20 Deposit Address
+            </button> */}
+            <br />
+            <span>{depositAddress}</span>
             {/* <button disabled={pendingRequest} onClick={sendYubiWithdrawal}>
                 Withdraw Yubi(50)
             </button> */}
@@ -154,17 +162,17 @@ function UserMenu(props: { user: UserState }) {
                 <span>amount: </span>
                 <input value={withdrawAmount} onChange={handleWithdrawAmountChange}></input>
             </div>
-            <button
+            {/* <button
                 disabled={pendingRequest || !address}
                 onClick={() => sendChainWithdrawal('TRC20')}
             >
                 TRC20
-            </button>
+            </button> */}
             <button
                 disabled={pendingRequest || !address}
                 onClick={() => sendChainWithdrawal('ERC20')}
             >
-                ERC20
+                ERC20 Withdrawal
             </button>
         </div>
     )
