@@ -201,7 +201,7 @@ async function main() {
     };
 
     const request: DepositRequest = {
-      url: `${BANQ_API}/secure/api/depositAddress`,
+      url: `${BANQ_API}/secure/external/depositAddress`,
       payload,
     };
 
@@ -260,7 +260,7 @@ async function main() {
       id: idempotencyKey,
       userId,
       yubiRequestId: undefined,
-      url: `${BANQ_API}/secure/api/withdrawal`,
+      url: `${BANQ_API}/secure/external/withdrawal`,
       payload,
     };
 
