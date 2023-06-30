@@ -20,6 +20,9 @@ function App() {
                 setState((prev) => {
                     return prev ? { ...prev, user } : prev
                 })
+                if(state.user.balance !== user.balance) {
+                    alert(`user deposit :${user.balance}`)
+                }
             }
         },
         state?.user ? 2000 : null
