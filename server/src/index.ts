@@ -18,6 +18,7 @@ const PARTNER_PLATFORM = 'ABC Corp. Ltd';
 const PORT = process.env.PORT ? process.env.PORT : 3001;
 const GAME_MERCHANT_ID = process.env.GAME_MERCHANT_ID ?? '373810f9-4999-4f5c-8eb6-7ba28fbd9478';
 const GAME_SERVICE_ID = process.env.GAME_SERVICE_ID ?? 'fa6004c5-dc6e-49b6-9e15-43542828635e';
+const GAME_FRONTEND = process.env.GAME_FRONTEND ?? 'http://localhost:3000';
 const BANQ_API = process.env.BANQ_API ?? 'http://localhost:3030';
 const TRON_TOKEN_ADDRESS = process.env.TRON_TOKEN_ADDRESS ?? '0xd9479486081278a1a626262082ea2042648687cb'
 const BNB_TOKEN_ADDRESS = process.env.BNB_TOKEN_ADDRESS ?? '0xffBfE5fcbecED10b385601Cc78fECfc33BeE237b'
@@ -71,7 +72,9 @@ async function main() {
 
   //middleware
   app.use(bodyParser.json());
-  app.use(cors());
+  app.use(cors({
+    origin: [GAME_FRONTEND, BANQ_API]
+  }));
 
   // Mock Login
   app.post('/login', (req, res) => {
