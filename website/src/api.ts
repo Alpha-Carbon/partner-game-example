@@ -103,7 +103,8 @@ export async function withdrawOnChain(
 
 export async function getDepositAddress(
     userId: string,
-    network: string
+    network: string,
+    value: string
 ) {
     const resp = await fetch(`${GAME_API}/getDepositAddress`, {
         method: 'POST',
@@ -111,7 +112,7 @@ export async function getDepositAddress(
             Accept: 'application/json',
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId, network }),
+        body: JSON.stringify({ userId, network, value }),
     })
 
     if (!resp.ok) {

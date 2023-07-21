@@ -12,23 +12,24 @@ import mkdirp from 'mkdirp';
 import { v4 as uuidv4 } from 'uuid';
 import { URLSearchParams } from 'url';
 
-const RSA_PRIVATE_KEY = fs.readFileSync('./private.pem');
-const RSA_PUBLIC_KEY = fs.readFileSync('./public.pem');
 
 // Aggregate Configuration Variables
 const PARTNER_PLATFORM = 'ABC Corp. Ltd';
 const PORT = process.env.PORT ? process.env.PORT : 3001;
-const BANQ_MERCHANT_ID = process.env.BANQ_MERCHANT_ID ?? '00000000-0000-0000-0000-000000000000';
-const BANQ_SERVICE_ID = process.env.BANQ_SERVICE_ID ?? '10000000-0000-0000-0000-000000000000';
-const YUBI_HOST = process.env.YUBI_HOST ?? 'http://localhost:3000';
-// const BANQ_API = process.env.BANQ_API ?? 'http://localhost:3030';
-const BANQ_API = process.env.BANQ_API ?? 'http://192.168.50.147:3030';
-const YUBI_PATH = '/payments/partner';
-const YUBI_PAYMENTS_URL = `${YUBI_HOST}${YUBI_PATH}`;
+const GAME_MERCHANT_ID = process.env.GAME_MERCHANT_ID ?? '373810f9-4999-4f5c-8eb6-7ba28fbd9478';
+const GAME_SERVICE_ID = process.env.GAME_SERVICE_ID ?? 'fa6004c5-dc6e-49b6-9e15-43542828635e';
+const BANQ_API = process.env.BANQ_API ?? 'http://localhost:3030';
 const TRON_TOKEN_ADDRESS = process.env.TRON_TOKEN_ADDRESS ?? '0xd9479486081278a1a626262082ea2042648687cb'
 const BNB_TOKEN_ADDRESS = process.env.BNB_TOKEN_ADDRESS ?? '0xffBfE5fcbecED10b385601Cc78fECfc33BeE237b'
 const TRON_TOKEN_TYPE = process.env.TRON_TOKEN_TYPE ?? 'USDT'
 const BNB_TOKEN_TYPE = process.env.BNB_TOKEN_TYPE ?? 'USDT'
+const RSA_PRIVATE_KEY_PATH = process.env.PRIVATE_KEY_PATH ?? './private.pem';
+const RSA_PUBLIC_KEY_PATH = process.env.PUBLIC_KEY_PATH ?? './public.pem';
+const BANQ_PUBLIC_KEY_PATH = process.env.BANQ_PRIVATE_KEY_PATH ?? './banq_public.pem';
+const RSA_PRIVATE_KEY = fs.readFileSync(RSA_PRIVATE_KEY_PATH);
+const RSA_PUBLIC_KEY = fs.readFileSync(RSA_PUBLIC_KEY_PATH);
+const BANQ_RSA_PUBLIC_KEY = fs.readFileSync(BANQ_PUBLIC_KEY_PATH);
+const SIGNATURE_HEADER_NAME = 'x-signature';
 
 const BNB_CHAIN_INFO = {
   chainType: 'binance',
@@ -49,8 +50,8 @@ console.log(`
 ===CONFIG===
 Port: ${PORT}
 Partner: ${PARTNER_PLATFORM}
-BANQ MerchantID: ${BANQ_MERCHANT_ID}
-BANQ ServiceID: ${BANQ_SERVICE_ID}
+GAME MerchantID: ${GAME_MERCHANT_ID}
+GAME ServiceID: ${GAME_SERVICE_ID}
 BANQ Api: ${BANQ_API}
 ===========\n`);
 
@@ -68,9 +69,6 @@ async function main() {
   const db = await createDatabase();
   await recover(db);
 
-  // start the event chaser
-  // stateUpdateLoop(db);
-
   //middleware
   app.use(bodyParser.json());
   app.use(cors());
@@ -82,29 +80,86 @@ async function main() {
     res.json(user);
   });
 
+
   // Get deposit record
-  app.post('/webhook', (req, res) => {
-    const userId = req.body.user_id;
+  app.post('/depositWebhook', (req, res) => {
+    const verifier = crypto.createVerify('RSA-SHA256');
+    const signature = req.headers[SIGNATURE_HEADER_NAME] as string;
+    const payload = sortedJsonStringify(req.body);
+    console.log('signature', signature);
+    console.log('payload', payload);
+    const signature_bytes = Buffer.from(signature, 'base64');
+    verifier.update(payload)
+    const isSignatureValid = verifier.verify(BANQ_RSA_PUBLIC_KEY, signature_bytes)
+
+    if (!isSignatureValid) {
+      res.status(400).send('bad signature');
+      return;
+    }
+
+    const invoiceCollection = db.get('invoice');
+    const invoice = invoiceCollection.getById(req.body.idempotencyKey).value();
     const usersCollection = db.get('users');
-    const txCollection = db.get('tetherTransactions').value();
-    const user = usersCollection.getById(userId).value();
+    const user = usersCollection.getById(invoice.userId).value();
     if (!user) {
       res.status(400).send('unknown user');
       return;
     }
-    if (!req.body.token_address) {
-      return;
-    }
+
+    const txCollection = db.get('tetherTransactions').value();
     // process event and store the fact
-    user.balance = Number(req.body.value) + Number(user.balance);
+    user.balance = Number(req.body.value.netAmount) + Number(user.balance);
     txCollection.push({
       userId: user.id,
       kind: 'Deposit',
+      amount: Number(req.body.value.netAmount),
+      at: req.body.dateTime,
+    });
+
+    invoiceCollection.removeById(req.body.idempotencyKey).write()
+    db.write();
+
+    res.status(200).json({ message: "ok" });
+  });
+
+
+  app.post('/withdrawalWebhook', (req, res) => {
+    const verifier = crypto.createVerify('RSA-SHA256');
+    const signature = req.headers[SIGNATURE_HEADER_NAME] as string;
+    const payload = sortedJsonStringify(req.body);
+    console.log('signature', signature);
+    console.log('payload', payload);
+    const signature_bytes = Buffer.from(signature, 'base64');
+    verifier.update(payload)
+    const isSignatureValid = verifier.verify(BANQ_RSA_PUBLIC_KEY, signature_bytes)
+
+    if (!isSignatureValid) {
+      res.status(400).send('bad signature');
+      return;
+    }
+
+    const invoiceCollection = db.get('invoice');
+    const invoice = invoiceCollection.getById(req.body.idempotencyKey).value();
+    const usersCollection = db.get('users');
+    const user = usersCollection.getById(invoice.userId).value();
+    if (!user) {
+      res.status(400).send('unknown user');
+      return;
+    }
+
+    const txCollection = db.get('tetherTransactions').value();
+    // process event and store the fact
+    user.balance = Number(user.balance) - Number(req.body.value);
+    txCollection.push({
+      userId: user.id,
+      kind: 'Withdrawal',
       amount: Number(req.body.value),
       at: req.body.dateTime,
     });
+    invoiceCollection.removeById(req.body.idempotencyKey).write()
     db.write();
-    res.status(200).send("12344");
+
+    res.status(200).json({ message: "ok" });
   });
 
   // Query users
@@ -116,57 +171,9 @@ async function main() {
     res.json(users);
   });
 
-  // // Withdraw funds to YUBI as User
-  // app.post('/withdrawOnYubi', async (req, res) => {
-  //   const { userId, currency, value } = req.body;
-  //   const userCollection = db.get('users');
-  //   let user = userCollection.getById(userId).value();
-  //   if (!user) {
-  //     res.status(400).send('unknown user');
-  //     return;
-  //   }
-  //   if (user.balance < value) {
-  //     res.status(400).send('insufficient funds');
-  //     return;
-  //   }
-  //   if (!user.yubiAccount) {
-  //     res.status(400).send('no withdrawal account available');
-  //     return;
-  //   }
-  //   if (currency !== 'Tether') {
-  //     res.status(400).send('unsupported currency');
-  //     return;
-  //   }
-
-  //   const idempotencyKey = uuidv4();
-  //   const payload: OnYubi = {
-  //     idempotencyKey,
-  //     user: user.yubiAccount,
-  //     amount: {
-  //       kind: currency,
-  //       value: String(value),
-  //     },
-  //     metadata: jankenMetadata(userId),
-  //   };
-  //   const request = {
-  //     id: idempotencyKey,
-  //     userId,
-  //     yubiRequestId: undefined,
-  //     url: `${BANQ_API}/partners/userWithdrawal`,
-  //     payload,
-  //   };
-
-  //   let accepted = await idempotentWithdrawal(db, request);
-  //   if (accepted) {
-  //     res.sendStatus(202);
-  //   } else {
-  //     res.sendStatus(500);
-  //   }
-  // });
-
-  // get user deposit address from Banq
+  // get user deposit invoice from Banq
   app.post('/getDepositAddress', async (req, res) => {
-    const { userId, network } = req.body;
+    const { userId, network, value } = req.body;
     const userCollection = db.get('users');
     let user = userCollection.getById(userId).value();
     if (!user) {
@@ -177,8 +184,8 @@ async function main() {
 
     let tokenAddress: String
     let chainInfo: {
-      chainType: string;
       chainId: Number;
+      chainType: string;
     }
     switch (network) {
       case 'TRC20':
@@ -191,28 +198,36 @@ async function main() {
         break;
     }
 
-
+    const idempotencyKey = uuidv4();
     const payload: Deposit = {
-      userId: user.id,
+      idempotencyKey: idempotencyKey,
       chainInfo,
-      metadata: {
-        serviceMedata: "test"
-      }
+      userId: user.id,
+      tokenType: 'usdt',
+      value,
     };
 
+
     const request: DepositRequest = {
-      url: `${BANQ_API}/secure/external/depositAddress`,
+      url: `${BANQ_API}/secure/external/depositInvoice`,
       payload,
     };
 
     let headers = createSignedHeaders(
-      BANQ_MERCHANT_ID,
-      BANQ_SERVICE_ID,
+      GAME_MERCHANT_ID,
+      GAME_SERVICE_ID,
       RSA_PRIVATE_KEY,
       request.payload
     );
 
     let banqRes = await httpClient.post(request.url, request.payload, { headers });
+
+    const invoiceCollection = db.get('invoice').value();
+    invoiceCollection.push({
+      id: idempotencyKey,
+      userId: user.id
+    });
+    db.write();
 
     res.status(200).json(banqRes.data)
   });
@@ -249,8 +264,8 @@ async function main() {
 
     const idempotencyKey = uuidv4();
     const payload: OnChain = {
-      idempotentKey: idempotencyKey,
-      merchantId: BANQ_MERCHANT_ID,
+      idempotencyKey: idempotencyKey,
+      merchantId: GAME_MERCHANT_ID,
       address,
       tokenType,
       value,
@@ -404,7 +419,7 @@ type DepositRequest = {
 };
 
 type OnYubi = {
-  idempotentKey: string,
+  idempotencyKey: string,
   address: string;
   value: string;
   chainInfo: {
@@ -415,7 +430,7 @@ type OnYubi = {
 };
 
 type OnChain = {
-  idempotentKey: string,
+  idempotencyKey: string,
   merchantId: string,
   tokenType: string,
   address: string,
@@ -430,13 +445,16 @@ type OnChain = {
 type Metadata = {
   serviceMedata: string
 }
+
 type Deposit = {
+  value: Number,
   chainInfo: {
     chainType: string;
     chainId: Number;
   },
+  tokenType: String,
   userId: string,
-  metadata: Metadata
+  idempotencyKey: string,
 };
 
 // change here
@@ -449,15 +467,21 @@ async function idempotentWithdrawal(db, request: WithdrawRequest) {
   // #IMPORTANT, User.balance and idempotent requests object must be a transactional write in YOUR
   // database.  `user.balance -= value`` and the request is stored on disk after the `write()` call
   const value = Number(request.payload.value);
-  console.log('user balance pre withdraw:', user.balance);
-  user.balance -= value;
-  console.log('user balance post withdraw:', user.balance);
+  // console.log('user balance pre withdraw:', user.balance);
+  // user.balance -= value;
+  // console.log('user balance post withdraw:', user.balance);
   const cachedRequest = requestCache.insert(request).write();
+  const invoiceCollection = db.get('invoice').value();
+  invoiceCollection.push({
+    id: request.payload.idempotencyKey,
+    userId: user.id
+  });
+  db.write();
 
   //Post Request, retrying if we can
   let headers = createSignedHeaders(
-    BANQ_MERCHANT_ID,
-    BANQ_SERVICE_ID,
+    GAME_MERCHANT_ID,
+    GAME_SERVICE_ID,
     RSA_PRIVATE_KEY,
     request.payload
   );
@@ -539,24 +563,6 @@ function jankenMetadata(userId: string) {
   };
 }
 
-// function createYubiPaymentLink(userId: string, currency: string, applyAmount: string, network: string): string {
-//   const metadataURIParams = new URLSearchParams(jankenMetadata(userId));
-//   const orderId = uuidv4();
-
-//   let path = network ? 
-//     `${YUBI_PATH}?currency=${currency}&partner=${YUBI_PARTNER_ID}&network=${network}&order=${orderId}&${metadataURIParams.toString()}` 
-//       : `${YUBI_PATH}?currency=${currency}&partner=${YUBI_PARTNER_ID}&order=${orderId}&${metadataURIParams.toString()}`;
-//   if (applyAmount !== "") {
-//     path += `&applyamount=${applyAmount}`
-//   }
-
-//   const signer = crypto.createSign('RSA-SHA256');
-//   signer.update(path);
-//   const signature = signer.sign(RSA_PRIVATE_KEY, 'base64');
-
-//   return `${YUBI_HOST}${path}&sig=${signature}`;
-// }
-
 async function createDatabase() {
   try {
     await mkdirp('dist');
@@ -580,6 +586,7 @@ async function createDatabase() {
       users: [],
       requestCache: [],
       tetherTransactions: [],
+      invoice: []
     }).write();
 
     const usersCollection = db.get('users');
@@ -620,69 +627,6 @@ async function createDatabase() {
   return db;
 }
 
-// function stateUpdateLoop(db) {
-//   const checkpoint = db.get('yubiCheckpoint').value();
-//   const usersCollection = db.get('users');
-//   const txCollection = db.get('tetherTransactions').value();
-//   const requestCache = db.get('requestCache');
-
-//   let loopId = setInterval(async () => {
-//     let data = await query_events(checkpoint.eventIndex);
-//     if (!data) {
-//       return;
-//     }
-
-//     try {
-//       // console.log(`received ${resp.data.length} events`);
-//       for (var i = 0; i < data.length; i++) {
-//         const event = data[i];
-//         console.log(`processing ${event.kind} event`);
-//         switch (event.kind) {
-//           case 'Received':
-//             if (event.metadata !== undefined && event.metadata.userId !== undefined) {
-//               const user = usersCollection.getById(event.metadata.userId).value();
-//               // process each event and store the fact
-//               user.balance += Number(event.amount.value);
-//               user.yubiAccount = event.correlationId;
-//               txCollection.push({
-//                 userId: user.id,
-//                 kind: 'Deposit',
-//                 amount: event.amount,
-//                 at: event.when,
-//               });
-//             }
-//             break;
-//           // case 'Transfered':
-//           case 'Withdrawn':
-//             if (event.metadata !== undefined && event.metadata.userId !== undefined) {
-//               const user = usersCollection.getById(event.metadata.userId).value();
-//               // It is up to the system to decide if the requestCache for this transfer event
-//               // should be deleted
-//               txCollection.push({
-//                 userId: user.id,
-//                 kind: 'Withdraw',
-//                 amount: event.amount,
-//                 at: event.when,
-//               });
-//             }
-//             break;
-//         }
-//         //#NOTE this bigint conversion is needed only because javascript only uses 53bit precision
-//         //for numbers and the api uses i64 for event indices
-//         let index = BigInt(checkpoint.eventIndex);
-//         index += BigInt(1);
-//         checkpoint.eventIndex = index.toString();
-//         // the last write makes everything transactional
-//         db.write();
-//       }
-//     } catch (e) {
-//       console.log(`server logic error: ${e}`);
-//       clearInterval(loopId);
-//       throw e;
-//     }
-//   }, 5000);
-// }
-
 type EventsRequest = {
   currencyKind: string;
   version: string;
@@ -715,37 +659,14 @@ function createSignedHeaders(
   return headers;
 }
 
-// async function query_events(eventIndex: string): Promise<any> {
-//   try {
-//     console.log('requesting events from:', eventIndex);
-//     const request: EventsRequest = {
-//       currencyKind: 'Tether',
-//       version: eventIndex,
-//     };
-//     const headers = createSignedHeaders(
-//       YUBI_PARTNER_ID,
-//       RSA_PRIVATE_KEY,
-//       request
-//     );
 
-//     const resp = await httpClient.post(`${YUBI_API}/partners/events`, request, {
-//       headers,
-//     });
-//     if (resp.status !== 200) {
-//       console.log(`events query failed with status: ${resp.status}`);
-//       return;
-//     }
-//     return resp.data;
-//   } catch (e) {
-//     console.log(`update failed: ${e}`);
-//     return;
-//   }
-// }
+function sortedJsonStringify(obj: any): string {
+  const sortedKeys = Object.keys(obj).sort();
+  const sortedObj: any = {};
 
-// const request_uri = `/partners/events?partnerId=${YUBI_PARTNER_ID}&currencyKind=Tether&version=1234`;
-// console.log(`request uri: ${request_uri}`)
-// const signer = crypto.createSign('RSA-SHA256');
-// signer.update(request_uri);
-// const signature = signer.sign(RSA_PRIVATE_KEY, 'base64');
-// const signed_request = `${request_uri}&sig=${signature}`;
-// console.log(`signed request uri: ${signed_request}`);
+  for (const key of sortedKeys) {
+    sortedObj[key] = obj[key];
+  }
+
+  return JSON.stringify(sortedObj);
+}
