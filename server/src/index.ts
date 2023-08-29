@@ -223,7 +223,7 @@ async function main() {
       request.payload
     );
 
-    let banqRes = await httpClient.post(request.url, request.payload, { headers });
+    let banqRes = await httpClient.post(request.url, request.payload, { headers })
 
     const invoiceCollection = db.get('invoice').value();
     invoiceCollection.push({
@@ -272,7 +272,8 @@ async function main() {
       address,
       tokenType,
       value,
-      chainInfo
+      chainInfo,
+      createdAt: new Date().toISOString()
     };
     const request = {
       id: idempotencyKey,
@@ -438,6 +439,7 @@ type OnChain = {
   tokenType: string,
   address: string,
   value: Number,
+  createdAt: string,
   chainInfo: {
     chainType: string;
     chainId: Number;
