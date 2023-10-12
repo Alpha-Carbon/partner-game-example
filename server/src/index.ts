@@ -203,13 +203,16 @@ async function main() {
 
     const idempotencyKey = uuidv4();
     const payload: Deposit = {
-      idempotencyKey: idempotencyKey,
+      idempotencyKey,
       chainInfo,
       userId: user.id,
       tokenType: 'usdt',
-      value,
+      // if value is empty, set value to undefined
+      value: value || undefined,
     };
 
+
+    console.log('fuck: ', payload)
 
     const request: DepositRequest = {
       url: `${BANQ_API}/secure/external/depositInvoice`,
@@ -452,7 +455,7 @@ type Metadata = {
 }
 
 type Deposit = {
-  value: Number,
+  value: Number | undefined,
   chainInfo: {
     chainType: string;
     chainId: Number;
