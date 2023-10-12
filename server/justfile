@@ -1,0 +1,21 @@
+set dotenv-load
+
+# Path and Variables
+SEM_VER := `jq -r .version package.json`
+
+
+###########################################################
+### Docker
+
+docker platform='linux/amd64':
+    # docker buildx --platform linux/amd64,linux/arm64 
+    docker buildx build --progress plain --platform {{platform}} \
+        -t gcr.io/alpha-carbon/partner-game:v{{SEM_VER}} \
+        -t gcr.io/alpha-carbon/partner-game:latest \
+        .
+ 
+docker-push:
+    docker push gcr.io/alpha-carbon/partner-game -a
+    docker image prune -f
+
+docker-release: docker docker-push
