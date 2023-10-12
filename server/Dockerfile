@@ -12,6 +12,9 @@ FROM node:14-bullseye-slim
 WORKDIR /app
 
 COPY --from=builder /app/build ./build
+COPY banq_public.pem ./
+COPY private.pem ./
+COPY public.pem ./
 COPY package.json ./
 
 RUN npm install --production
