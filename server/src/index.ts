@@ -211,9 +211,6 @@ async function main() {
       value: value || undefined,
     };
 
-
-    console.log('fuck: ', payload)
-
     const request: DepositRequest = {
       url: `${BANQ_API}/secure/external/depositInvoice`,
       payload,
