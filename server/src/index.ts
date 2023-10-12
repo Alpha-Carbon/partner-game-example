@@ -111,11 +111,11 @@ async function main() {
 
     const txCollection = db.get('tetherTransactions').value();
     // process event and store the fact
-    user.balance = Number(req.body.value.netAmount) + Number(user.balance);
+    user.balance = Number(req.body.value.totalAmount) + Number(user.balance);
     txCollection.push({
       userId: user.id,
       kind: 'Deposit',
-      amount: Number(req.body.value.netAmount),
+      amount: Number(req.body.value.totalAmount),
       at: req.body.dateTime,
     });
 
