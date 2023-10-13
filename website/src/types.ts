@@ -8,7 +8,7 @@ export const JSONParse = <T>(guard: (o: any) => o is T) => (
     return guard(value)
       ? { type: 'Ok', value }
       : { type: 'Err', error: new Error('malformed json') };
-  } catch (e) {
+  } catch (e: any) {
     return { type: 'Err', error: e };
   }
 };

@@ -42,7 +42,7 @@ export default function Janken({ userId, updateUser }: Props) {
                     value: resp.value,
                 }))
                 updateUser(resp.userState)
-            } catch (e) {
+            } catch (e: any) {
                 alert('error: ' + e.message)
                 setState(initialState)
             }

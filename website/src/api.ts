@@ -10,7 +10,7 @@ import {
 
 const GAME_API = process.env.REACT_APP_GAME_API
     ? process.env.REACT_APP_GAME_API
-    : 'http://localhost:3001'
+    : 'https://demo.banq.sapi.alphacarbon.network'
 
 console.log(`Game Api: ${GAME_API}`)
 

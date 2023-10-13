@@ -65,7 +65,7 @@ function UserMenu(props: { user: UserState }) {
                 await API.withdrawOnYubi(user.id, 'Tether', 50)
                 alert('Withdrawal Yubi Request of $50 USDT accepted')
                 setState('idle')
-            } catch (e) {
+            } catch (e: any) {
                 console.log(e)
                 alert('Withdrawal failed:' + e.message)
                 setState('idle')
@@ -218,8 +218,8 @@ function Transactions(props: { user: UserState }) {
     const rows = txState.txns.map((tx, i) => (
         <tr key={`tx-${i}`}>
             <td>{tx.kind}</td>
-            <td>{tx.amount.kind}</td>
-            <td>{tx.amount.value}</td>
+            <td>{'USDT'}</td>
+            <td>{tx.amount}</td>
         </tr>
     ))
     return (
