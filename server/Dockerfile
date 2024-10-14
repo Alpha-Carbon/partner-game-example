@@ -3,6 +3,8 @@
 FROM node:14-bullseye-slim AS builder
 WORKDIR /app
 COPY package.json ./
+# NOTE: clean npm cache if encountered issue
+# RUN npm install && npm cache clean --force
 RUN npm install --production
 COPY . .
 RUN npm run build
