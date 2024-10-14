@@ -19,6 +19,7 @@ const GAME_MERCHANT_ID =
   process.env.GAME_MERCHANT_ID ?? '373810f9-4999-4f5c-8eb6-7ba28fbd9478';
 const GAME_SERVICE_ID =
   process.env.GAME_SERVICE_ID ?? 'fa6004c5-dc6e-49b6-9e15-43542828635e';
+const LOCAL_FRONTEND = 'http://localhost:3000';
 const GAME_FRONTEND = process.env.GAME_FRONTEND ?? 'http://localhost:3000';
 const BANQ_API = process.env.BANQ_API ?? 'http://localhost:3030';
 const TRON_TOKEN_ADDRESS =
@@ -87,7 +88,7 @@ async function main() {
   app.use(bodyParser.json());
   app.use(
     cors({
-      origin: [GAME_FRONTEND, BANQ_API],
+      origin: [LOCAL_FRONTEND, GAME_FRONTEND, BANQ_API],
     })
   );
 
