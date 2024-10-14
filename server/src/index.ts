@@ -12,21 +12,29 @@ import mkdirp from 'mkdirp';
 import { v4 as uuidv4 } from 'uuid';
 import { URLSearchParams } from 'url';
 
-
 // Aggregate Configuration Variables
 const PARTNER_PLATFORM = 'ABC Corp. Ltd';
 const PORT = process.env.PORT ? process.env.PORT : 3001;
-const GAME_MERCHANT_ID = process.env.GAME_MERCHANT_ID ?? '373810f9-4999-4f5c-8eb6-7ba28fbd9478';
-const GAME_SERVICE_ID = process.env.GAME_SERVICE_ID ?? 'fa6004c5-dc6e-49b6-9e15-43542828635e';
+const GAME_MERCHANT_ID =
+  process.env.GAME_MERCHANT_ID ?? '373810f9-4999-4f5c-8eb6-7ba28fbd9478';
+const GAME_SERVICE_ID =
+  process.env.GAME_SERVICE_ID ?? 'fa6004c5-dc6e-49b6-9e15-43542828635e';
 const GAME_FRONTEND = process.env.GAME_FRONTEND ?? 'http://localhost:3000';
 const BANQ_API = process.env.BANQ_API ?? 'http://localhost:3030';
-const TRON_TOKEN_ADDRESS = process.env.TRON_TOKEN_ADDRESS ?? '0xd9479486081278a1a626262082ea2042648687cb'
-const BNB_TOKEN_ADDRESS = process.env.BNB_TOKEN_ADDRESS ?? '0xffBfE5fcbecED10b385601Cc78fECfc33BeE237b'
-const TRON_TOKEN_TYPE = process.env.TRON_TOKEN_TYPE ?? 'USDT'
-const BNB_TOKEN_TYPE = process.env.BNB_TOKEN_TYPE ?? 'USDT'
+const TRON_TOKEN_ADDRESS =
+  process.env.TRON_TOKEN_ADDRESS ??
+  '0xd9479486081278a1a626262082ea2042648687cb';
+const BNB_TOKEN_ADDRESS =
+  process.env.BNB_TOKEN_ADDRESS ?? '0xffBfE5fcbecED10b385601Cc78fECfc33BeE237b';
+const PLY_TOKEN_ADDRESS =
+  process.env.PLY_TOKEN_ADDRESS ?? '0xe1f526d32e05697b68b518f4a7dea4a2dd0ad4c0';
+const TRON_TOKEN_TYPE = process.env.TRON_TOKEN_TYPE ?? 'USDT';
+const BNB_TOKEN_TYPE = process.env.BNB_TOKEN_TYPE ?? 'USDT';
+const PLY_TOKEN_TYPE = process.env.PLY_TOKEN_TYPE ?? 'USDT';
 const RSA_PRIVATE_KEY_PATH = process.env.PRIVATE_KEY_PATH ?? './private.pem';
 const RSA_PUBLIC_KEY_PATH = process.env.PUBLIC_KEY_PATH ?? './public.pem';
-const BANQ_PUBLIC_KEY_PATH = process.env.BANQ_PRIVATE_KEY_PATH ?? './banq_public.pem';
+const BANQ_PUBLIC_KEY_PATH =
+  process.env.BANQ_PRIVATE_KEY_PATH ?? './banq_public.pem';
 const RSA_PRIVATE_KEY = fs.readFileSync(RSA_PRIVATE_KEY_PATH);
 const RSA_PUBLIC_KEY = fs.readFileSync(RSA_PUBLIC_KEY_PATH);
 const BANQ_RSA_PUBLIC_KEY = fs.readFileSync(BANQ_PUBLIC_KEY_PATH);
@@ -34,18 +42,23 @@ const SIGNATURE_HEADER_NAME = 'x-signature';
 
 const BNB_CHAIN_INFO = {
   chainType: 'binance',
-  chainId: 97
-}
+  chainId: 97,
+};
+
+const PLY_CHAIN_INFO = {
+  chainType: 'polygon',
+  chainId: 80002,
+};
 
 const TRON_CHAIN_INFO = {
   chainType: 'tron',
-  chainId: 1
-}
+  chainId: 1,
+};
 
 const ETH_CHAIN_INFO = {
   chainType: 'eth',
-  chainId: 1337
-}
+  chainId: 1337,
+};
 
 console.log(`
 ===CONFIG===
@@ -72,9 +85,11 @@ async function main() {
 
   //middleware
   app.use(bodyParser.json());
-  app.use(cors({
-    origin: [GAME_FRONTEND, BANQ_API]
-  }));
+  app.use(
+    cors({
+      origin: [GAME_FRONTEND, BANQ_API],
+    })
+  );
 
   // Mock Login
   app.post('/login', (req, res) => {
@@ -82,7 +97,6 @@ async function main() {
     const user = db.get('users').getById(userId).value();
     res.json(user);
   });
-
 
   // Get deposit record
   app.post('/depositWebhook', (req, res) => {
@@ -92,8 +106,11 @@ async function main() {
     console.log('signature', signature);
     console.log('payload', payload);
     const signature_bytes = Buffer.from(signature, 'base64');
-    verifier.update(payload)
-    const isSignatureValid = verifier.verify(BANQ_RSA_PUBLIC_KEY, signature_bytes)
+    verifier.update(payload);
+    const isSignatureValid = verifier.verify(
+      BANQ_RSA_PUBLIC_KEY,
+      signature_bytes
+    );
 
     if (!isSignatureValid) {
       res.status(400).send('bad signature');
@@ -119,12 +136,11 @@ async function main() {
       at: req.body.dateTime,
     });
 
-    invoiceCollection.removeById(req.body.idempotencyKey).write()
+    invoiceCollection.removeById(req.body.idempotencyKey).write();
     db.write();
 
-    res.status(200).json({ message: "ok" });
+    res.status(200).json({ message: 'ok' });
   });
-
 
   app.post('/withdrawalWebhook', (req, res) => {
     const verifier = crypto.createVerify('RSA-SHA256');
@@ -133,8 +149,11 @@ async function main() {
     console.log('signature', signature);
     console.log('payload', payload);
     const signature_bytes = Buffer.from(signature, 'base64');
-    verifier.update(payload)
-    const isSignatureValid = verifier.verify(BANQ_RSA_PUBLIC_KEY, signature_bytes)
+    verifier.update(payload);
+    const isSignatureValid = verifier.verify(
+      BANQ_RSA_PUBLIC_KEY,
+      signature_bytes
+    );
 
     if (!isSignatureValid) {
       res.status(400).send('bad signature');
@@ -159,10 +178,10 @@ async function main() {
       amount: Number(req.body.value),
       at: req.body.dateTime,
     });
-    invoiceCollection.removeById(req.body.idempotencyKey).write()
+    invoiceCollection.removeById(req.body.idempotencyKey).write();
     db.write();
 
-    res.status(200).json({ message: "ok" });
+    res.status(200).json({ message: 'ok' });
   });
 
   // Query users
@@ -184,20 +203,19 @@ async function main() {
       return;
     }
 
-
-    let tokenAddress: String
+    let tokenAddress: String;
     let chainInfo: {
       chainId: Number;
       chainType: string;
-    }
+    };
     switch (network) {
       case 'TRC20':
-        tokenAddress = TRON_TOKEN_ADDRESS
-        chainInfo = TRON_CHAIN_INFO
+        tokenAddress = TRON_TOKEN_ADDRESS;
+        chainInfo = TRON_CHAIN_INFO;
         break;
       case 'ERC20':
-        tokenAddress = BNB_TOKEN_ADDRESS
-        chainInfo = BNB_CHAIN_INFO
+        tokenAddress = PLY_TOKEN_ADDRESS;
+        chainInfo = PLY_CHAIN_INFO;
         break;
     }
 
@@ -223,18 +241,19 @@ async function main() {
       request.payload
     );
 
-    let banqRes = await httpClient.post(request.url, request.payload, { headers })
+    let banqRes = await httpClient.post(request.url, request.payload, {
+      headers,
+    });
 
     const invoiceCollection = db.get('invoice').value();
     invoiceCollection.push({
       id: idempotencyKey,
-      userId: user.id
+      userId: user.id,
     });
     db.write();
 
-    res.status(200).json(banqRes.data)
+    res.status(200).json(banqRes.data);
   });
-
 
   // Withdraw funds to Chain as User
   app.post('/withdrawOnChain', async (req, res) => {
@@ -249,19 +268,19 @@ async function main() {
       res.status(400).send('insufficient funds');
       return;
     }
-    let tokenType: string
+    let tokenType: string;
     let chainInfo: {
       chainType: string;
       chainId: Number;
-    }
+    };
     switch (network) {
       case 'TRC20':
-        tokenType = TRON_TOKEN_TYPE
-        chainInfo = TRON_CHAIN_INFO
+        tokenType = TRON_TOKEN_TYPE;
+        chainInfo = TRON_CHAIN_INFO;
         break;
       case 'ERC20':
-        tokenType = BNB_TOKEN_TYPE
-        chainInfo = BNB_CHAIN_INFO
+        tokenType = PLY_TOKEN_TYPE;
+        chainInfo = PLY_CHAIN_INFO;
         break;
     }
 
@@ -273,7 +292,7 @@ async function main() {
       tokenType,
       value,
       chainInfo,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
     const request = {
       id: idempotencyKey,
@@ -385,7 +404,7 @@ async function main() {
 }
 
 main()
-  .then((_res) => { })
+  .then((_res) => {})
   .catch(console.error);
 
 // In case of a crash, we get all of the requests without a requestId (due to missing the response
@@ -408,7 +427,6 @@ async function recover(db) {
   }
 }
 
-
 type WithdrawRequest = {
   id: string;
   userId: string;
@@ -423,43 +441,42 @@ type DepositRequest = {
 };
 
 type OnYubi = {
-  idempotencyKey: string,
+  idempotencyKey: string;
   address: string;
   value: string;
   chainInfo: {
     chainType: string;
     chainId: Number;
-  }
+  };
   tokenAddress: string | undefined;
 };
 
 type OnChain = {
-  idempotencyKey: string,
-  merchantId: string,
-  tokenType: string,
-  address: string,
-  value: Number,
-  createdAt: string,
+  idempotencyKey: string;
+  merchantId: string;
+  tokenType: string;
+  address: string;
+  value: Number;
+  createdAt: string;
   chainInfo: {
     chainType: string;
     chainId: Number;
-  }
+  };
 };
 
-
 type Metadata = {
-  serviceMedata: string
-}
+  serviceMedata: string;
+};
 
 type Deposit = {
-  value: Number | undefined,
+  value: Number | undefined;
   chainInfo: {
     chainType: string;
     chainId: Number;
-  },
-  tokenType: String,
-  userId: string,
-  idempotencyKey: string,
+  };
+  tokenType: String;
+  userId: string;
+  idempotencyKey: string;
 };
 
 // change here
@@ -479,7 +496,7 @@ async function idempotentWithdrawal(db, request: WithdrawRequest) {
   const invoiceCollection = db.get('invoice').value();
   invoiceCollection.push({
     id: request.payload.idempotencyKey,
-    userId: user.id
+    userId: user.id,
   });
   db.write();
 
@@ -490,11 +507,7 @@ async function idempotentWithdrawal(db, request: WithdrawRequest) {
     RSA_PRIVATE_KEY,
     request.payload
   );
-  const revert = await retryRequest(
-    request.url,
-    headers,
-    request.payload
-  );
+  const revert = await retryRequest(request.url, headers, request.payload);
   if (!revert) {
     //store the withdrawal response id from YUBI
     //when the corresponding event comes back from YUBI, we can mark the entry based on the
@@ -591,7 +604,7 @@ async function createDatabase() {
       users: [],
       requestCache: [],
       tetherTransactions: [],
-      invoice: []
+      invoice: [],
     }).write();
 
     const usersCollection = db.get('users');
@@ -650,7 +663,6 @@ function createSignedHeaders(
   privateKey: any,
   payload: object
 ): object {
-
   const signer = crypto.createSign('RSA-SHA256');
   const signature = signer
     .update(JSON.stringify(payload))
@@ -663,7 +675,6 @@ function createSignedHeaders(
   };
   return headers;
 }
-
 
 function sortedJsonStringify(obj: any): string {
   const sortedKeys = Object.keys(obj).sort();
